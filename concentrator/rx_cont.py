@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import paho.mqtt.client as mqtt
 
 """ A simple continuous receiver class. """
 
@@ -44,10 +45,16 @@ class LoRaRcvCont(LoRa):
         self.clear_irq_flags(RxDone=1)
         payload = self.read_payload(nocheck=True)
         print(bytes(payload).decode("utf-8",'ignore'))
+        print(payload)                  #Debug
+        print(type(payload))
         self.set_mode(MODE.SLEEP)
         self.reset_ptr_rx()
         BOARD.led_off()
         self.set_mode(MODE.RXCONT)
+
+        client = mqtt.Client()
+        client.connect("127.0.0.1", 1883, 60)
+        client.publish("test/hello", payload=bytes(payload).decode("utf-8",'ignore'), qos=0, retain=False)
 
     def on_tx_done(self):
         print("\nTxDone")
