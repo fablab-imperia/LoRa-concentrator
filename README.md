@@ -20,6 +20,7 @@ The concentrator is made of a Raspberry Pi Rev. 2 with SX127x module and is base
 * https://github.com/travisgoodspeed/loraham/issues/19  libraries comparison
 * https://github.com/sandeepmistry/arduino-LoRa
 * https://github.com/sandeepmistry/arduino-LoRa/blob/master/API.md
+* https://www.thethingsnetwork.org/labs/story/build-the-cheapest-possible-node-yourself
 
 
 ## Authors
