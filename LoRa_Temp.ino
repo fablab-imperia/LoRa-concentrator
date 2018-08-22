@@ -18,10 +18,10 @@
 #include <LoRa.h> 
 #include <DallasTemperature.h>
 #include "LowPower.h"  //removing power Led and voltage regulator, putting LoRa to sleep + powerdown allows 7,5 uA power consumption
+
 unsigned int sleepCounter;
 
-
-#define ONE_WIRE_BUS 7 
+#define ONE_WIRE_BUS 8 
   
 OneWire oneWire(ONE_WIRE_BUS); 
 DallasTemperature sensors(&oneWire);
@@ -58,11 +58,28 @@ void setup()
 void lora_tx()
 {
   LoRa.beginPacket();
-  LoRa.print("T1= ");
+  LoRa.print("T1=");
   LoRa.print(databuf);
+  LoRa.print("Vcc=");
+  LoRa.print(Vcc_probe());
   LoRa.endPacket();
   Serial.println("Waiting for packet to complete..."); 
   delay(200); // is this necessary? TODO
+}
+
+float Vcc_probe() {                        
+  signed long resultVcc;
+  float resultVccFloat;
+  // Read 1.1V reference against AVcc
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  delay(10);                           // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC);                 // Convert
+  while (bit_is_set(ADCSRA,ADSC));
+  resultVcc = ADCL;
+  resultVcc |= ADCH<<8;
+  resultVcc = 1126400L / resultVcc;    // Back-calculate AVcc in mV
+  resultVccFloat = (float) resultVcc / 1000.0; // Convert to Float
+  return resultVccFloat;
 }
  
  
@@ -81,27 +98,15 @@ void loop()
   
   Serial.print("Temperature is: "); 
   Serial.println(sensors.getTempCByIndex(0));
+  Serial.print("Vcc voltage level is: "); 
+  Serial.println(Vcc_probe());
     
- // Get the temperature and send the message to rf95_server
+ // Get the temperature and send the message to rf95_server TODO ADD ERROR MANAGEMENT
   sensors.requestTemperatures();
   data = sensors.getTempCByIndex(0);
   datastring +=dtostrf(data, 4, 2, databuf);  // ??????
   strcpy((char *)dataoutgoing,databuf);
-  Serial.print("databuf = ");                 //debug
-  Serial.println(databuf);
-  //Serial.print("dataoutgoing = ");          //debug
-  //Serial.println(dataoutgoing);
   Serial.println("Sending to LoRa");
-
-  if (firsttime) {    // repeat a set of 3 transmission to allow initial reception check
-  lora_tx();
-  delay(1000);
-  lora_tx();
-  delay(1000);
-  lora_tx();
-  delay(1000);
-  firsttime = false;
-  }
   
   lora_tx();
   delay(2000);
@@ -112,12 +117,16 @@ void loop()
   Serial.println("------"); 
   Serial.println("Enter sleep mode");
 
-  for (sleepCounter = 113; sleepCounter > 0; sleepCounter--) //see https://github.com/rocketscream/Low-Power/issues/43
+  if (!firsttime);
   {
-    // example: 4 hours = 60x60x4 = 14400 s
-    // 14400 s / 8 s = 1800
-    LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  
+     for (sleepCounter = 113; sleepCounter > 0; sleepCounter--) //see https://github.com/rocketscream/Low-Power/issues/43
+      {
+      // example: 4 hours = 60x60x4 = 14400 s
+      // 14400 s / 8 s = 1800
+      LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  
+      }
   }
+  firsttime = false; 
   LoRa.sleep();
   
 }
