@@ -3,6 +3,7 @@
 // Pin sets are optimized for "The Cheapest possible node" by Martijn Quaedvlieg
 // https://www.thethingsnetwork.org/labs/story/build-the-cheapest-possible-node-yourself
 // It is not intended to work with LoRaWAN... yet
+//
 // This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
 
 // see also
@@ -16,6 +17,9 @@
 #include <OneWire.h>
 #include <LoRa.h> 
 #include <DallasTemperature.h>
+#include "LowPower.h"  //removing power Led and voltage regulator, putting LoRa to sleep + powerdown allows 7,5 uA power consumption
+unsigned int sleepCounter;
+
 
 #define ONE_WIRE_BUS 7 
   
@@ -28,6 +32,8 @@ float data;             // variables to handle temperature
 String datastring="";
 char databuf[10];
 uint8_t dataoutgoing[10];
+bool firsttime = true;
+
  
 void setup() 
 {
@@ -39,7 +45,7 @@ void setup()
  
   Serial.println("Arduino LoRa TX Test!");
  
-  if (!LoRa.begin(433E6)) {
+  if (!LoRa.begin(433E6)) {           //set 433.05 MHz TODO
     Serial.println("Starting LoRa failed!");
     while (1);
     }
@@ -48,33 +54,34 @@ void setup()
   sensors.begin(); 
   
 }
+
+void lora_tx()
+{
+  LoRa.beginPacket();
+  LoRa.print("T1= ");
+  LoRa.print(databuf);
+  LoRa.endPacket();
+  Serial.println("Waiting for packet to complete..."); 
+  delay(200); // is this necessary? TODO
+}
  
  
 void loop()
 {
   // Print to serial monitor
-  
+
+
+ 
+  LoRa.idle(); //wake up lora from sleep? is this necessary? TODO
+  delay(200);
+      
   Serial.print("Requesting temperatures..."); 
   sensors.requestTemperatures(); // Send the command to get temperature readings 
   Serial.println("DONE"); 
   
   Serial.print("Temperature is: "); 
   Serial.println(sensors.getTempCByIndex(0));
-  
- 
-  /*
-  char radiopacket[20] = "Hello World #      ";
-  itoa(packetnum++, radiopacket+13, 10);
-  Serial.print("Sending "); Serial.println(radiopacket);
-  radiopacket[19] = 0;
-  
-  Serial.println("Sending..."); delay(10);
-  rf95.send((uint8_t *)radiopacket, 20);
- 
-  Serial.println("Waiting for packet to complete..."); delay(10);
-  rf95.waitPacketSent();
-  */
-  
+    
  // Get the temperature and send the message to rf95_server
   sensors.requestTemperatures();
   data = sensors.getTempCByIndex(0);
@@ -85,13 +92,32 @@ void loop()
   //Serial.print("dataoutgoing = ");          //debug
   //Serial.println(dataoutgoing);
   Serial.println("Sending to LoRa");
-  LoRa.beginPacket();
-  LoRa.print("T1= ");
-  LoRa.print(databuf);
-  LoRa.endPacket();
-  Serial.println("Waiting for packet to complete..."); 
-  delay(10);
 
-  Serial.println("------"); 
+  if (firsttime) {    // repeat a set of 3 transmission to allow initial reception check
+  lora_tx();
   delay(1000);
+  lora_tx();
+  delay(1000);
+  lora_tx();
+  delay(1000);
+  firsttime = false;
+  }
+  
+  lora_tx();
+  delay(2000);
+  lora_tx();  //repeat the message once to avoid packet collision on radio frequency
+
+
+ 
+  Serial.println("------"); 
+  Serial.println("Enter sleep mode");
+
+  for (sleepCounter = 113; sleepCounter > 0; sleepCounter--) //see https://github.com/rocketscream/Low-Power/issues/43
+  {
+    // example: 4 hours = 60x60x4 = 14400 s
+    // 14400 s / 8 s = 1800
+    LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  
+  }
+  LoRa.sleep();
+  
 }
