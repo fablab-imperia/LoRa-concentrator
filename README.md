@@ -10,6 +10,8 @@ The most popular libraries:
 * Arduino-LoRa (by Sandeep Mistry ) https://github.com/sandeepmistry/arduino-LoRa
 * Heltec LoRa-BLE-WiFi-ESP32 https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series (install guides included)
 
+Note: Be aware that Arduino-LoRa and Heltec LoRa libraries cannot easily coexist because of duplicated library error when compiling for Lora-ESP32 board
+
 
 ## Concentrator
 The concentrator is made of a Raspberry Pi Rev. 2 with SX127x module and is based on library:
