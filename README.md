@@ -8,6 +8,7 @@ Nodes consist of Arduino boards like Arduino Pro Mini or ESP32 mounting LoRa mod
 The most popular libraries: 
 * RadioHead (Adafruit adaption) https://github.com/adafruit/RadioHead
 * Arduino-LoRa (by Sandeep Mistry ) https://github.com/sandeepmistry/arduino-LoRa
+* Heltec LoRa-BLE-WiFi-ESP32 https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series (install guides included)
 
 
 ## Concentrator
