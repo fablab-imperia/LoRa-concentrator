@@ -22,6 +22,7 @@ The concentrator is made of a Raspberry Pi Rev. 2 with SX127x module and is base
 * https://github.com/sandeepmistry/arduino-LoRa
 * https://github.com/sandeepmistry/arduino-LoRa/blob/master/API.md
 * https://www.thethingsnetwork.org/labs/story/build-the-cheapest-possible-node-yourself
+* https://hackaday.io/project/26991-esp32-board-wifi-lora-32
 
 
 ## Authors
