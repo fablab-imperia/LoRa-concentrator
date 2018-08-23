@@ -17,7 +17,7 @@
 #include <OneWire.h>
 #include <LoRa.h> 
 #include <DallasTemperature.h>
-#include "LowPower.h"  //removing power Led and voltage regulator, putting LoRa to sleep + powerdown allows 7,5 uA power consumption
+//#include "LowPower.h"  //removing power Led and voltage regulator, putting LoRa to sleep + powerdown allows 7,5 uA power consumption
 
 unsigned int sleepCounter;
 
@@ -52,15 +52,15 @@ void setup()
   Serial.println("LoRa radio init OK!");
  
   sensors.begin(); 
+    delay(1000);
   
 }
 
 void lora_tx()
 {
   LoRa.beginPacket();
-  LoRa.print("T1=");
-  LoRa.print(databuf);
-  LoRa.print("Vcc=");
+    LoRa.print(databuf);
+  LoRa.print(";");
   LoRa.print(Vcc_probe());
   LoRa.endPacket();
   Serial.println("Waiting for packet to complete..."); 
@@ -94,6 +94,7 @@ void loop()
       
   Serial.print("Requesting temperatures..."); 
   sensors.requestTemperatures(); // Send the command to get temperature readings 
+  delay(1000);
   Serial.println("DONE"); 
   
   Serial.print("Temperature is: "); 
@@ -119,14 +120,16 @@ void loop()
 
   if (!firsttime);
   {
-     for (sleepCounter = 113; sleepCounter > 0; sleepCounter--) //see https://github.com/rocketscream/Low-Power/issues/43
+    /* for (sleepCounter = 113; sleepCounter > 0; sleepCounter--) //see https://github.com/rocketscream/Low-Power/issues/43
       {
       // example: 4 hours = 60x60x4 = 14400 s
       // 14400 s / 8 s = 1800
-      LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  
-      }
-  }
+      //LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  
+     
+      } */
+   }
   firsttime = false; 
+  delay(300000);
   LoRa.sleep();
   
 }
