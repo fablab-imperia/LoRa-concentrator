@@ -29,6 +29,7 @@ All these tests were made using a Raspberry Pi concentrator prepared as follows.
 * install node-red (if not already installed) and set a flow to get and use your incoming MQTT data
 * install node-red Dashboard to create a dashboard for your sensors data that you can edit via nodes and flows
 * install node-red-admin to set a degree of security if you wish to access your node-red remotely https://nodered.org/docs/security#http-node-security - Be aware that this is NOT a strong security setting (see link below).
+* create a python script to perform the lora listening an MQTT publishing, and set it to start at boot
 
 ## Authors
 * Members of Fablab Imperia (https://fablabimperia.org/ - https://wiki.fablabimperia.org/)
@@ -36,6 +37,7 @@ All these tests were made using a Raspberry Pi concentrator prepared as follows.
 ## See also
 ### Lora
 * http://wiki.dragino.com/index.php?title=LoRa_Questions
+* https://forum.loraserver.io/t/relation-between-sync-word-private-network-and-end-nodes/191/11
 * https://github.com/travisgoodspeed/loraham/issues/19  libraries comparison
 * https://github.com/sandeepmistry/arduino-LoRa
 * https://github.com/sandeepmistry/arduino-LoRa/blob/master/API.md
@@ -49,6 +51,8 @@ All these tests were made using a Raspberry Pi concentrator prepared as follows.
 * https://github.com/node-red/cookbook.nodered.org/wiki/How-to-safely-expose-Node-RED-to-the-Internet
 ### MQTT
 * http://www.steves-internet-guide.com/into-mqtt-python-client/
+### other issues
+* https://andreasrohner.at/posts/Electronics/How-to-make-the-Watchdog-Timer-work-on-an-Arduino-Pro-Mini-by-replacing-the-bootloader/
 
 
 ## Licenses
