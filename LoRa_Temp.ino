@@ -1,4 +1,5 @@
-// LoRa Temperature Sensor v0.5 by Enrico Gallesio (IZ1ZCK)
+// LoRa Temperature Sensor v0.8 by Enrico Gallesio (IZ1ZCK)
+// This file is part of repository https://github.com/fablab-imperia/LoRa-tests
 // This sketch is intended to send temperature data to nearby LoRa devices on 433Mhz ISM band
 // Pin sets are optimized for "The Cheapest possible node" by Martijn Quaedvlieg
 // https://www.thethingsnetwork.org/labs/story/build-the-cheapest-possible-node-yourself
@@ -17,49 +18,49 @@
 #include <OneWire.h>
 #include <LoRa.h> 
 #include <DallasTemperature.h>
-//#include "LowPower.h"  //removing power Led and voltage regulator, putting LoRa to sleep + powerdown allows 7,5 uA power consumption
+#include "LowPower.h"  //removing power Led and voltage regulator, putting LoRa to sleep + powerdown allows 7,5 uA power consumption
 
-unsigned int sleepCounter;
+#define ONE_WIRE_BUS 8
+#define SLEEP_TIME_MINUTES 15   // low power mode duration between each tx
 
-#define ONE_WIRE_BUS 8 
-  
 OneWire oneWire(ONE_WIRE_BUS); 
 DallasTemperature sensors(&oneWire);
 
-int16_t packetnum = 0;  // packet counter, we increment per xmission
-
-float data;             // variables to handle temperature
+unsigned int sleepCounter;  
+float temp_value;             // variables to handle temperature
 String datastring="";
-char databuf[10];
+char temp_probe[10];
 uint8_t dataoutgoing[10];
-bool firsttime = true;
-
  
 void setup() 
 {
   while (!Serial);
   Serial.begin(9600);
-  delay(100);
+  delay(1000);        //allow some time for onewire bus to initialize (D18B20 can take up to 750ms)
 
-  LoRa.setPins(6, 5, 2);
- 
   Serial.println("Arduino LoRa TX Test!");
- 
-  if (!LoRa.begin(433E6)) {           //set 433.05 MHz TODO
+  
+  LoRa.setPins(6, 5, 2);
+    
+  if (!LoRa.begin(43305E4)) {           //set 433.05 MHz
     Serial.println("Starting LoRa failed!");
     while (1);
     }
   Serial.println("LoRa radio init OK!");
+  
+  LoRa.setSyncWord(0xAA);           // ranges from 0-0xFF, default 0x34, see API docs
+  Serial.println("LoRa radio sync word set!");
+
+  LoRa.enableCrc();
+  Serial.println("LoRa CRC check enabled!");
  
   sensors.begin(); 
-    delay(1000);
-  
 }
 
 void lora_tx()
 {
   LoRa.beginPacket();
-    LoRa.print(databuf);
+  LoRa.print(temp_probe);
   LoRa.print(";");
   LoRa.print(Vcc_probe());
   LoRa.endPacket();
@@ -67,7 +68,7 @@ void lora_tx()
   delay(200); // is this necessary? TODO
 }
 
-float Vcc_probe() {                        
+float Vcc_probe() {                    // battery level monitoring
   signed long resultVcc;
   float resultVccFloat;
   // Read 1.1V reference against AVcc
@@ -85,51 +86,37 @@ float Vcc_probe() {
  
 void loop()
 {
-  // Print to serial monitor
-
-
- 
-  LoRa.idle(); //wake up lora from sleep? is this necessary? TODO
-  delay(200);
-      
-  Serial.print("Requesting temperatures..."); 
-  sensors.requestTemperatures(); // Send the command to get temperature readings 
-  delay(1000);
+  Serial.println("------"); 
+  Serial.print("Requesting new temperature..."); 
+  sensors.requestTemperatures(); // Send command onewire global command to get temperature readings 
+  temp_value = sensors.getTempCByIndex(0);
+  //delay(1000);                 // Probably required after Low Power Mode to allow temperature sensor to re-initialize
   Serial.println("DONE"); 
   
   Serial.print("Temperature is: "); 
-  Serial.println(sensors.getTempCByIndex(0));
+  Serial.println(temp_value);   // index because it is the first (only) sensor on onewire bus
   Serial.print("Vcc voltage level is: "); 
   Serial.println(Vcc_probe());
     
- // Get the temperature and send the message to rf95_server TODO ADD ERROR MANAGEMENT
-  sensors.requestTemperatures();
-  data = sensors.getTempCByIndex(0);
-  datastring +=dtostrf(data, 4, 2, databuf);  // ??????
-  strcpy((char *)dataoutgoing,databuf);
-  Serial.println("Sending to LoRa");
   
-  lora_tx();
-  delay(2000);
-  lora_tx();  //repeat the message once to avoid packet collision on radio frequency
+  datastring +=dtostrf(temp_value, 4, 2, temp_probe);  // ??????
+  strcpy((char *)dataoutgoing,temp_probe);
+  Serial.println("Sending to LoRa");
 
-
- 
+  lora_tx();        // Send packet - Add ACK TODO
+  
   Serial.println("------"); 
   Serial.println("Enter sleep mode");
-
-  if (!firsttime);
-  {
-    /* for (sleepCounter = 113; sleepCounter > 0; sleepCounter--) //see https://github.com/rocketscream/Low-Power/issues/43
-      {
-      // example: 4 hours = 60x60x4 = 14400 s
-      // 14400 s / 8 s = 1800
-      //LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  
-     
-      } */
-   }
-  firsttime = false; 
-  delay(300000);
-  LoRa.sleep();
   
+  LoRa.sleep();
+  delay(200);
+  for (sleepCounter = (SLEEP_TIME_MINUTES*60/8); sleepCounter > 0; sleepCounter--) //see https://github.com/rocketscream/Low-Power/issues/43
+  {
+    // example: 4 hours = 60x60x4 = 14400 s
+    // 14400 s / 8 s = 1800
+    LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  
+  }
+  LoRa.idle();    //wake up lora from sleep? is this necessary? TODO
+  delay(200); 
+ 
 }
