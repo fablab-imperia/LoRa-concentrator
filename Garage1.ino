@@ -11,23 +11,24 @@
 #include <HCSR04.h>
 #include <dht.h>
 
-#define SCK     5    // GPIO5  -- SX127x's SCK
-#define MISO    19   // GPIO19 -- SX127x's MISO
-#define MOSI    27   // GPIO27 -- SX127x's MOSI
-#define SS      18   // GPIO18 -- SX127x's CS
-#define RST     14   // GPIO14 -- SX127x's RESET
-#define DI00    26   // GPIO26 -- SX127x's IRQ(Interrupt Request)
+#define SCK         5    // GPIO5  -- SX127x's SCK
+#define MISO        19   // GPIO19 -- SX127x's MISO
+#define MOSI        27   // GPIO27 -- SX127x's MOSI
+#define SS          18   // GPIO18 -- SX127x's CS
+#define RST         14   // GPIO14 -- SX127x's RESET
+#define DI00        26   // GPIO26 -- SX127x's IRQ(Interrupt Request)
 
-#define BAND    433E6  //you can set band here directly,e.g. 868E6,915E6
+#define BAND        433E6  //you can set band here directly,e.g. 868E6,915E6
 #define PABOOST true
 
-#define LED_PIN 25               // Built in LED pin
-#define RELE_PIN 33
-#define PIR_PIN 23               // PIR input pin (for IR sensor)
+#define LED_PIN     25               // Built in LED pin
+#define OLED_PIN    16
+#define RELE_PIN    25
+#define PIR_PIN     23               // PIR input pin (for IR sensor)
 #define TRIGGER_PIN 12
-#define ECHO_PIN 13
+#define ECHO_PIN    13
 
-#define DHT22_PIN 17
+#define DHT22_PIN   17
 
 dht DHT;
 
@@ -37,19 +38,21 @@ bool PIR_state = LOW;             // we start, assuming no motion detected
 
 unsigned int counter = 0;
 double distance = 0;
+bool rele_state = false;
+bool car_state = false;
 
 SSD1306 display(0x3c, 4, 15);
 
 void setup() {
- 
+
     Serial.begin(9600);
 
     // Initializing OLED
     
-    pinMode(16,OUTPUT);
-    digitalWrite(16, LOW);    // set GPIO16 low to reset OLED
+    pinMode(OLED_PIN,OUTPUT);
+    digitalWrite(OLED_PIN, LOW);    // set GPIO16 low to reset OLED
     delay(50); 
-    digitalWrite(16, HIGH); // while OLED is running, must set GPIO16 in high
+    digitalWrite(OLED_PIN, HIGH); // while OLED is running, must set GPIO16 in high
 
     display.init();
     display.flipScreenVertically();  
@@ -73,9 +76,10 @@ void setup() {
     // Initializing pins
     
     pinMode(LED_PIN, OUTPUT);  // initialize digital pin LED 25 as an output.
+    digitalWrite(RELE_PIN, HIGH);
     pinMode(RELE_PIN, OUTPUT);
     pinMode(PIR_PIN, INPUT);
-    digitalWrite(RELE_PIN, LOW);
+  
 
     delay(1000);
 }
@@ -94,7 +98,7 @@ struct      // DHT22 errors counter
 
 
 void loop(){
-  delay(2000);
+  delay(5000);
   digitalWrite(RELE_PIN, LOW);
     // PIR reading
     
@@ -103,6 +107,7 @@ void loop(){
     // Ultrasounds reading
     
     double distance = distanceSensor.measureDistanceCm();
+    delay(250);
     
     // DHT22 reading
     
@@ -132,6 +137,39 @@ void loop(){
         break;
     }
 
+    // IF
+
+    if (distance > 5) {
+      if (distance < 100) 
+      {
+        car_state = true;
+  
+            if (PIR_state) {
+              rele_state = true;
+                    digitalWrite(RELE_PIN, LOW);    // turn the LED off by making the voltage LOW
+                    delay(500); 
+                    digitalWrite(RELE_PIN, HIGH);    // turn the LED off by making the voltage LOW
+              rele_state = false;      
+            }
+      }
+      else
+      {
+        car_state = false;
+        rele_state = false; 
+        digitalWrite(RELE_PIN, HIGH);    // turn the LED off by making the voltage LOW
+      }
+    car_state = false;
+    rele_state = false; 
+    digitalWrite(RELE_PIN, HIGH);    // turn the LED off by making the voltage LOW
+    }
+    else
+    {
+      car_state = false;
+      rele_state = false;
+      digitalWrite(RELE_PIN, HIGH);    // turn the LED off by making the voltage LOW
+    }
+
+
     // Print to serial monitor
 
     Serial.println(DHT.temperature, 1);
@@ -149,11 +187,9 @@ void loop(){
     display.drawString(0,10, "Distance: " + String(distance));
     display.drawString(0,20, "Temp: " + String(DHT.temperature));
     display.drawString(0,30, "Hum: " + String(DHT.humidity));
-    display.drawString(0,40, "Rele: ");
+    display.drawString(0,40, "Rele: " + String(rele_state));
     display.drawString(0,50, "Counter: " + String(counter));
     display.display();
-  
-
   
   /*
   PIR_state = digitalRead(PIR_PIN);  // read input value
