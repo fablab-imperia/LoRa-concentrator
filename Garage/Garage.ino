@@ -25,7 +25,7 @@
 
 #define ULTRASOUNDS_TIME    1000     // Min time to poll ultrasounds
 #define PIR_TIME            2000    // Min time to poll Infrared PIR sensor
-#define DHT22_TIME          500    // Min time to poll temperature and humidity DHT22 sensor
+#define DHT22_TIME          5000    // Min time to poll temperature and humidity DHT22 sensor
 #define OLED_TIME           1000    // Min time to update OLED display
 #define LIGHT_OFF_TIME      1000    // Min time lights stay off
 #define LIGHT_ON_TIME       5000    // Min time lights stay on
