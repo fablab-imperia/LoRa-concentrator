@@ -18,37 +18,38 @@
 #include <HCSR04.h>
 #include <dht.h>
 
-// Delays configuration
+// Configuration
+#define VERBOSE_OUTPUT      0       // DEBUG mode 0: only errors - mode 1: errors + car&lights log - mode 2: verbose
 #define OLED_WARM_UP        2000    // OLED warm-up time in Setup
 #define SENSORS_WARM_UP     2000    // Additional Sensors warm-up time in Setup
-#define OLED_INIT_SYNC      50      // OLED initialization syncing time in Setup. Do NOT change
+#define OLED_INIT_SYNC      50      // OLED initialization syncing time in Setup. DO NOT CHANGE
 
-#define ULTRASOUNDS_TIME    1000     // Min time to poll ultrasounds
-#define PIR_TIME            2000    // Min time to poll Infrared PIR sensor
+#define ULTRASOUNDS_TIME    500     // Min time to poll ultrasounds
+#define PIR_TIME            500     // Min time to poll Infrared PIR sensor
 #define DHT22_TIME          5000    // Min time to poll temperature and humidity DHT22 sensor
 #define OLED_TIME           1000    // Min time to update OLED display
 #define LIGHT_OFF_TIME      1000    // Min time lights stay off
 #define LIGHT_ON_TIME       5000    // Min time lights stay on
-#define LORA_WEATHER_TIME   2000    // Min time to send LoRa weather data
-#define LORA_CAR_TIME       2000    // Min time to send LoRa "Car arrived/went away" data
+#define LORA_WEATHER_TIME   900000  // Min time to send LoRa weather data
+#define LORA_CAR_TIME       5000    // Min time to send LoRa "Car arrived/went away" data 
 
 #define CYCLE_MIN_TIME      2000    // Minimum delay between each loop cycle
 
 // Pins
-#define LED_PIN       25               // Built in LED pin
+#define LED_PIN       25    // Built in LED pin
 #define OLED_PIN      16
-#define LIGHT_PIN     25
-#define PIR_PIN       23               // PIR input pin (for IR sensor)
+#define LIGHT_PIN     25    // Same as led pin because it helps trigging correctly the relays 
+#define PIR_PIN       23    // PIR input pin (for IR sensor)
 #define TRIGGER_PIN   12
 #define ECHO_PIN      13
 #define DHT22_PIN     17
 
-#define SCK           5    // GPIO5  -- LoRa SX127x's SCK   // LoRa module integrated in Heltec ESP32 board
-#define MISO          19   // GPIO19 -- LoRa SX127x's MISO  // Do not change any of the following pins
-#define MOSI          27   // GPIO27 -- LoRa SX127x's MOSI
-#define SS            18   // GPIO18 -- LoRa SX127x's CS
-#define RST           14   // GPIO14 -- LoRa SX127x's RESET
-#define DI00          26   // GPIO26 -- LoRa SX127x's IRQ(Interrupt Request)
+#define SCK           5     // GPIO5  -- LoRa SX127x's SCK   // LoRa module integrated in Heltec ESP32 board
+#define MISO          19    // GPIO19 -- LoRa SX127x's MISO  // Do not change any of the following pins
+#define MOSI          27    // GPIO27 -- LoRa SX127x's MOSI
+#define SS            18    // GPIO18 -- LoRa SX127x's CS
+#define RST           14    // GPIO14 -- LoRa SX127x's RESET
+#define DI00          26    // GPIO26 -- LoRa SX127x's IRQ(Interrupt Request)
 
 // LoRa
 #define BAND          43305E4  //you can set band here directly,e.g. 868E6,915E6
@@ -61,22 +62,26 @@
 
 // Global vars
   unsigned long currentMillis = 0;
-  long previousMillis_ultrasounds = 0;
+  unsigned int counter = 0;             // progressive number on OLED
+  long previousMillis_ultrasounds = 0;  // vars to compute elapsed time
   long previousMillis_pir = 0;
   long previousMillis_dht22 = 0;
   long previousMillis_lightoff = 0;
   long previousMillis_lighton = 0;
   long previousMillis_oled = 0;
   long previousMillis_loraweather = 0;
-  long previousMillis_loracar = 0;
-  bool PIR_state = LOW;             // we start, assuming no motion detected
-  unsigned int counter = 0;         // OLED number of updates counter
-  double distance = 0;        
+  long last_valid_dht22Millis = 0;
+  long last_car_changeMillis = 0;
+  double distance = 0;  
+  double temp_deg = 0;
+  double humid_perc = 0; 
+  bool PIR_state = false;               // we start, assuming no motion detected
   bool light_state = false;
   bool light_prev = false;
   bool car_state = false;
-  double temp_deg = 0;
-  double humid_perc = 0;
+  bool car_prev = false;
+  bool car_lora_state = false;
+  bool car_lora_prev = false;
     
   struct                      // DHT22 errors counter
     {
@@ -90,11 +95,18 @@
         uint32_t unknown;
     } stat = { 0,0,0,0,0,0,0,0};
 
+//Functions
+
+bool inRange(int val, int minimum, int maximum)
+{
+  return ((minimum <= val) && (val <= maximum));
+}
 
 void setup() {
 
     Serial.begin(9600);
-
+    Serial.println("-- GARAGE LoRa Module --");
+    Serial.println("");
     // Initializing pins
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LIGHT_PIN, HIGH);
@@ -135,39 +147,65 @@ void loop(){
   if(currentMillis - previousMillis_pir > PIR_TIME) {
     previousMillis_pir = currentMillis;
     PIR_state = digitalRead(PIR_PIN);  // read input value
-    Serial.print("PIR polled! Condition is: ");
-    Serial.println(PIR_state);
+    if (VERBOSE_OUTPUT > 1) {
+      Serial.print("PIR polled! Condition is: ");
+      Serial.println(PIR_state);
+    }
   }
 
   // Ultrasounds polling
   if(currentMillis - previousMillis_ultrasounds > ULTRASOUNDS_TIME) {
     previousMillis_ultrasounds = currentMillis;
     distance = distanceSensor.measureDistanceCm();
-    Serial.print("Ultrasounds polled! Distance is: ");
-    Serial.print(distance);
-    Serial.println(" cm");
+    if (VERBOSE_OUTPUT > 1) {
+      Serial.print("Ultrasounds polled! Distance is: ");
+      Serial.print(distance);
+      Serial.println(" cm");
+    }
   }
 
   // Time to switch light OFF?
   if(currentMillis - previousMillis_lighton > LIGHT_ON_TIME) {
     previousMillis_lighton = currentMillis;
-    if (light_state != light_prev) {
-      Serial.print("Light was ON! Now setting: ");
-      Serial.println(light_state);
-      digitalWrite(LIGHT_PIN, light_state);
-      light_prev = light_state;
+
+    if (!PIR_state)
+    {
+      if (!car_state) {
+        light_state = false;
+        if (light_state != light_prev) {
+            if (VERBOSE_OUTPUT) {
+              Serial.print("Light was ON! Now switching OFF: ");
+              Serial.println(light_state);
+            }
+            digitalWrite(LIGHT_PIN, light_state);
+            light_prev = light_state;
+        }
+      }
     }
+    else
+    {
+      if (VERBOSE_OUTPUT) Serial.println("PIR still active, skipping...");
+    }
+    
   }
 
   // Time to switch light ON?
   if(currentMillis - previousMillis_lightoff > LIGHT_OFF_TIME) {
     previousMillis_lightoff = currentMillis;
-    if (light_state != light_prev) {
-      Serial.print("Light was OFF! Now setting: ");
-      Serial.println(light_state);
-      digitalWrite(LIGHT_PIN, light_state);
-      light_prev = light_state;
-    }
+
+    if (car_state)
+    {
+      light_state = true;
+      if (light_state != light_prev) {
+        if (VERBOSE_OUTPUT) {
+        Serial.print("Light was OFF! Now switching ON: ");
+        Serial.println(light_state);
+        }
+        digitalWrite(LIGHT_PIN, light_state);
+        light_prev = light_state;
+      }
+    }  
+    
   }
     
   // DHT22 polling
@@ -177,36 +215,66 @@ void loop(){
     uint32_t start = micros();              //DHT22 error check procedure
     int dht22_chk = DHT.read22(DHT22_PIN);
     uint32_t stop = micros();
-    Serial.print("DHT22 polled! State is: ");
+    if (VERBOSE_OUTPUT > 1) Serial.print("DHT22 polled! State is: ");
     
     switch (dht22_chk)
     {
       case DHTLIB_OK:
           stat.ok++;
-          Serial.println("OK\t");          // remove tabs? - TODO
+          last_valid_dht22Millis = currentMillis;
+          temp_deg = (DHT.temperature);
+          humid_perc = (DHT.humidity); 
+          if (VERBOSE_OUTPUT > 1) Serial.println("OK\t");
           break;
       case DHTLIB_ERROR_CHECKSUM:
           stat.crc_error++;
-          Serial.println("Checksum error\t");
+          Serial.println("DHT22 Checksum error\t");
           break;
       case DHTLIB_ERROR_TIMEOUT:
           stat.time_out++;
-          Serial.println("Time out error\t");
+          Serial.println("DHT22 Time out error\t");
           break;
       default:
           stat.unknown++;
-          Serial.println("Unknown error\t");
+          Serial.println("DHT22 Unknown error\t");
           break;
     }
+    
+    if (stat.total % 5 == 0)
+    {
+        if (VERBOSE_OUTPUT) {
+        Serial.println("DHT22 Errors stats");
+        Serial.println("\nTOT\tOK\tCRC\tTO\tUNK");
+        Serial.print(stat.total);
+        Serial.print("\t");
+        Serial.print(stat.ok);
+        Serial.print("\t");
+        Serial.print(stat.crc_error);
+        Serial.print("\t");
+        Serial.print(stat.time_out);
+        Serial.print("\t");
+        Serial.print(stat.connect);
+        Serial.print("\t");
+        Serial.print(stat.ack_l);
+        Serial.print("\t");
+        Serial.print(stat.ack_h);
+        Serial.print("\t");
+        Serial.print(stat.unknown);
+        Serial.println("\n");
+        }
+    }
 
-    temp_deg = (DHT.temperature);
-    humid_perc = (DHT.humidity);
-    Serial.print("Temperature is: ");
-    Serial.print(temp_deg);
-    Serial.println("°C");
-    Serial.print("Humidity is: ");
-    Serial.print(humid_perc);
-    Serial.println("%");
+    if (VERBOSE_OUTPUT) {
+      Serial.print("Temperature is: ");
+      Serial.print(temp_deg);
+      Serial.println("°C");
+      Serial.print("Humidity is: ");
+      Serial.print(humid_perc);
+      Serial.println("%");
+      Serial.print("Last valid DHT22 reading was: ");
+      Serial.print((currentMillis - last_valid_dht22Millis)/1000);
+      Serial.println(" secs ago.");
+    }
   }
   
   // Print to OLED
@@ -227,58 +295,87 @@ void loop(){
   }
 
 
-  // Conditions to set light (lights)  
-
-  /* TO REPLACE COMPLETELY - TODO
-
-    if (distance > 5) {
-      if (distance < 100) 
-      {
-        car_state = true;
-  
-            if (PIR_state) {
-              light_state = true;
-                    digitalWrite(LIGHT_PIN, LOW);    // turn the LED off by making the voltage LOW
-                    delay(500); 
-                    digitalWrite(LIGHT_PIN, HIGH);    // turn the LED off by making the voltage LOW
-              light_state = false;      
-            }
+// Look for the car
+ 
+    if (inRange(distance, 5, 100))
+    {
+      car_state = true;
+      if (car_prev != car_state) {
+        Serial.print("Car is present! :D - distance is: ");
+        Serial.println(distance);
+        last_car_changeMillis = currentMillis;
       }
-      else
-      {
-        car_state = false;
-        light_state = false; 
-        digitalWrite(LIGHT_PIN, HIGH);    // turn the LED off by making the voltage LOW
-      }
-    car_state = false;
-    light_state = false; 
-    digitalWrite(LIGHT_PIN, HIGH);    // turn the LED off by making the voltage LOW
+      car_prev = car_state;
     }
+    else if (distance < 0) {}
     else
     {
       car_state = false;
-      light_state = false;
-      digitalWrite(LIGHT_PIN, HIGH);    // turn the LED off by making the voltage LOW
+        if (car_prev != car_state) {
+        Serial.print("Car gone away... :( - distance is: ");
+        Serial.println(distance);
+      }
+      car_prev = car_state;
     }
-*/
 
 
-      
-  /*
-  PIR_state = digitalRead(PIR_PIN);  // read input value
-  if (PIR_state == HIGH) {            // check if the input is HIGH
-    digitalWrite(LED_PIN, HIGH);  // turn LED ON
-    Serial.println("Motion detected!");
-  } 
-  else 
-  {
-    digitalWrite(LED_PIN, LOW); // turn LED OFF
-    Serial.println("Motion ended!");
+  // Time to send weather via LoRa?
+  if (currentMillis - previousMillis_loraweather > LORA_WEATHER_TIME) {
+    previousMillis_loraweather = currentMillis;
+    Serial.println("Time to send LoRa Weather!");
+    if (VERBOSE_OUTPUT > 1) {
+      Serial.print("Temperature is: ");
+      Serial.print(temp_deg);
+      Serial.println("°C");
+      Serial.print("Humidity is: ");
+      Serial.print(humid_perc);
+      Serial.println("%");
+      Serial.print("Last valid DHT22 reading was: ");
+      Serial.print((currentMillis - last_valid_dht22Millis)/1000);
+      Serial.println(" secs ago.");
+    }
+    // PACKET SEND WEATHER - TODO
   }
-  */
+  
+  
+  // Time to send car present notification?
+  if (car_state) {
+    if (currentMillis-last_car_changeMillis > LORA_CAR_TIME) { // to get a more stable detection of car, allow some ultrasound cycles to perform
+      last_car_changeMillis = currentMillis;
+      car_lora_state = true;
+      if (car_lora_state != car_lora_prev) {
+        Serial.print("Car appears arrived since a while... Sending LoRa packet! "); 
+        Serial.println(car_state);
+        // PACKET SEND CAR STATE - TODO 
+        car_lora_prev = car_lora_state;
+      }
+    }
+  }
+  else
+  {
+    if (currentMillis-last_car_changeMillis > LORA_CAR_TIME) {  // to get a more stable detection of car, allow some ultrasound cycles to perform 
+        last_car_changeMillis = currentMillis;
+        car_lora_state = false;
+        if (car_lora_state != car_lora_prev) {
+          Serial.print("Car appears gone away since a while... Sending LoRa packet! ");
+          Serial.println(car_state);
+          // PACKET SEND CAR STATE - TODO 
+          car_lora_prev = car_lora_state;
+        }
+    }
+  }
+    
 
-  // Send LoRa packet -- TODO
+
+  /* 
+      each x secs send weather data
+      //if last_carpresent > x send notification
       
-
+      
+      send: temp_deg, humid_perc,
+      ((currentMillis - last_valid_dht22Millis)/1000) //last valid dht22 reading
+      //if lastvaliddht22 reading > x secs then send warning
+      //if last_carpresent > x send notification
+  */
 }
   
