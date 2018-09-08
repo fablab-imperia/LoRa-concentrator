@@ -22,10 +22,11 @@
 #define OLED_WARM_UP        2000    // OLED warm-up time in Setup
 #define SENSORS_WARM_UP     2000    // Additional Sensors warm-up time in Setup
 #define OLED_INIT_SYNC      50      // OLED initialization syncing time in Setup. Do NOT change
-#define ULTRASOUNDS_TIME    500     // Min time to poll ultrasounds
+
+#define ULTRASOUNDS_TIME    1000     // Min time to poll ultrasounds
 #define PIR_TIME            2000    // Min time to poll Infrared PIR sensor
-#define DHT22_TIME          2000    // Min time to poll temperature and humidity DHT22 sensor
-#define OLED_TIME           2000    // Min time to update OLED display
+#define DHT22_TIME          500    // Min time to poll temperature and humidity DHT22 sensor
+#define OLED_TIME           1000    // Min time to update OLED display
 #define LIGHT_OFF_TIME      1000    // Min time lights stay off
 #define LIGHT_ON_TIME       5000    // Min time lights stay on
 #define LORA_WEATHER_TIME   2000    // Min time to send LoRa weather data
@@ -69,7 +70,7 @@
   long previousMillis_loraweather = 0;
   long previousMillis_loracar = 0;
   bool PIR_state = LOW;             // we start, assuming no motion detected
-  unsigned int counter = 0;         // cycles counter
+  unsigned int counter = 0;         // OLED number of updates counter
   double distance = 0;        
   bool light_state = false;
   bool light_prev = false;
@@ -182,19 +183,19 @@ void loop(){
     {
       case DHTLIB_OK:
           stat.ok++;
-          Serial.println("OK,\t");          // remove tabs? - TODO
+          Serial.println("OK\t");          // remove tabs? - TODO
           break;
       case DHTLIB_ERROR_CHECKSUM:
           stat.crc_error++;
-          Serial.println("Checksum error,\t");
+          Serial.println("Checksum error\t");
           break;
       case DHTLIB_ERROR_TIMEOUT:
           stat.time_out++;
-          Serial.println("Time out error,\t");
+          Serial.println("Time out error\t");
           break;
       default:
           stat.unknown++;
-          Serial.println("Unknown error,\t");
+          Serial.println("Unknown error\t");
           break;
     }
 
@@ -202,10 +203,10 @@ void loop(){
     humid_perc = (DHT.humidity);
     Serial.print("Temperature is: ");
     Serial.print(temp_deg);
-    Serial.println(" °C");
+    Serial.println("°C");
     Serial.print("Humidity is: ");
     Serial.print(humid_perc);
-    Serial.println(" %");
+    Serial.println("%");
   }
   
   // Print to OLED
@@ -222,6 +223,7 @@ void loop(){
     display.drawString(0,40, "Rele: " + String(light_state));
     display.drawString(0,50, "Counter: " + String(counter));
     display.display();
+    counter++;
   }
 
 
@@ -277,6 +279,6 @@ void loop(){
 
   // Send LoRa packet -- TODO
       
-  counter++;
+
 }
   
