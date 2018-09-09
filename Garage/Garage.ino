@@ -25,7 +25,7 @@
 #define OLED_INIT_SYNC      50      // OLED initialization syncing time in Setup. DO NOT CHANGE
 
 #define ULTRASOUNDS_TIME    500     // Min time to poll ultrasounds
-#define PIR_TIME            500     // Min time to poll Infrared PIR sensor
+#define PIR_PHOTOR_TIME            500     // Min time to poll Infrared PIR sensor
 #define DHT22_TIME          5000    // Min time to poll temperature and humidity DHT22 sensor
 #define OLED_TIME           1000    // Min time to update OLED display
 #define LIGHT_OFF_TIME      1000    // Min time lights stay off
@@ -39,9 +39,9 @@
 // Pins
 #define OLED_PIN      16
 #define LIGHT_PIN     25    // Same as led pin because it helps trigging correctly the relay switch 
-#define PHOTORES_PIN  33
+#define PHOTORES_PIN  12
 #define PIR_PIN       23    // PIR input pin (for IR sensor)
-#define TRIGGER_PIN   12
+#define TRIGGER_PIN   21
 #define ECHO_PIN      13
 #define DHT22_PIN     17
 
@@ -59,7 +59,7 @@
 // Modules
   SSD1306 display(0x3c, 4, 15);
   dht DHT;
-  UltraSonicDistanceSensor distanceSensor(13, 12);
+  UltraSonicDistanceSensor distanceSensor(13, 21);
 
 // Global vars
   unsigned long currentMillis = 0;
@@ -85,6 +85,8 @@
   bool car_prev = false;
   bool car_lora_state = false;
   bool car_lora_prev = false;
+  bool light_inhibit = false;
+  bool night_mode = false;
     
   struct                      // DHT22 errors counter
     {
@@ -115,6 +117,7 @@ void setup() {
     digitalWrite(LIGHT_PIN, HIGH);
     pinMode(LIGHT_PIN, OUTPUT);
     pinMode(PIR_PIN, INPUT);
+    //pinMode(PHOTORES_PIN, INPUT_PULLUP);
 
     // Initializing OLED - Sometimes OLED does not wakeup at startup - TODO
     pinMode(OLED_PIN,OUTPUT);
@@ -145,15 +148,36 @@ void setup() {
 void loop(){
 
   currentMillis = millis(); //elapsed time since reboot in milliseconds. used to avoid delays
-  photores_val = analogRead(PHOTORES_PIN);
+ 
 
-  // PIR polling
-  if(currentMillis - previousMillis_pir > PIR_TIME) {
+  delay(500);
+
+  if (!night_mode) {
+    if (photores_val < 2000)
+      {
+        night_mode = true;
+        Serial.println("NIGHT MODE ON!");
+      }
+  }
+  else
+  {
+    if (photores_val > 2500)
+      {
+        night_mode = false;
+        Serial.println("NIGHT MODE OFF!");
+      }
+  }
+
+  // PIR & PHOTORESISTOR polling
+  if(currentMillis - previousMillis_pir > PIR_PHOTOR_TIME) {
     previousMillis_pir = currentMillis;
     PIR_state = digitalRead(PIR_PIN);  // read input value
+    photores_val = analogRead(PHOTORES_PIN);
     if (VERBOSE_OUTPUT > 1) {
-      Serial.print("PIR polled! Condition is: ");
-      Serial.println(PIR_state);
+      //Serial.print("PIR polled! Condition is: ");             //DEBUG
+      //Serial.println(PIR_state);
+      Serial.print("Photores value: ");
+      Serial.println(photores_val);
     }
   }
 
@@ -181,7 +205,13 @@ void loop(){
               Serial.print("Light is ON, car is gone. Switching OFF: ");
               Serial.println(light_state);
             //}
-            digitalWrite(LIGHT_PIN, !light_state);    // Relay is activated with LOW
+              if (night_mode) {
+                 digitalWrite(LIGHT_PIN, !light_state);    // Relay is activated with LOW
+                }
+                else
+                {
+                  Serial.println("It's daytime! Skipping switch off");
+                }
             light_prev = light_state;
         }
       }
@@ -207,7 +237,14 @@ void loop(){
               Serial.print("Light is ON! Max timout elapsed. Now switching OFF: ");
               Serial.println(light_state);
             //}
-            digitalWrite(LIGHT_PIN, !light_state);    // Relay is activated with LOW
+             if (night_mode) {
+                 digitalWrite(LIGHT_PIN, !light_state);    // Relay is activated with LOW
+                }
+                else
+                {
+                  Serial.println("It's daytime! Skipping switch off");
+                }
+        
             light_prev = light_state;
         }
       }
@@ -232,12 +269,18 @@ void loop(){
         Serial.print("Light is OFF, car is here! Now switching ON: ");
         Serial.println(light_state);
         //}
+        if (night_mode) {
         digitalWrite(LIGHT_PIN, false);      // Relay is activated with LOW
+        }
+        else
+        {
+          Serial.println("It's daytime! Skipping switch on");
+        }
         light_prev = light_state;
       }
     }  
-    
-  }
+   }
+   
     
   // DHT22 polling
   if(currentMillis - previousMillis_dht22 > DHT22_TIME) {
@@ -271,7 +314,7 @@ void loop(){
           break;
     }
     
-    if (stat.total % 5 == 0)
+    if (stat.total % 20 == 0)
     {
         if (VERBOSE_OUTPUT) {
         Serial.println("DHT22 Errors stats");
@@ -315,11 +358,11 @@ void loop(){
     display.setTextAlignment(TEXT_ALIGN_LEFT);
     display.setFont(ArialMT_Plain_10);
     
-    display.drawString(0,0, "PIR: " + String(PIR_state));
+    display.drawString(0,0, "PIR: " + String(PIR_state) + " Rele: " + String(light_state));
     display.drawString(0,10, "Distance: " + String(distance));
     display.drawString(0,20, "Temp: " + String(temp_deg));
     display.drawString(0,30, "Hum: " + String(humid_perc));
-    display.drawString(0,40, "Rele: " + String(light_state));
+    display.drawString(0,40, "Lumin: " + String(photores_val));
     display.drawString(0,50, "Counter: " + String(counter));
     display.display();
     counter++;
@@ -327,7 +370,7 @@ void loop(){
 
 
 // Look for the car
- 
+
     if (inRange(distance, 5, 100))
     {
       car_state = true;
@@ -348,8 +391,8 @@ void loop(){
       }
       car_prev = car_state;
     }
-
-
+  
+  
   // Time to send weather via LoRa?
   if (currentMillis - previousMillis_loraweather > LORA_WEATHER_TIME) {
     previousMillis_loraweather = currentMillis;
@@ -367,6 +410,7 @@ void loop(){
     }
     // PACKET SEND WEATHER - TODO
   }
+ 
   
   
   // Time to send car present notification?
@@ -399,9 +443,9 @@ void loop(){
         }
     }
   }
-    
-Serial.println(photores_val);
-delay(500);
+
+
+
 
   /* 
       each x secs send weather data
