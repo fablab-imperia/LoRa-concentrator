@@ -29,16 +29,17 @@
 #define DHT22_TIME          5000    // Min time to poll temperature and humidity DHT22 sensor
 #define OLED_TIME           1000    // Min time to update OLED display
 #define LIGHT_OFF_TIME      1000    // Min time lights stay off
-#define LIGHT_ON_TIME       5000    // Min time lights stay on
+#define LIGHT_ON_CAR0_TIME  10000   // Min time lights stay on
+#define LIGHT_ON_CAR1_TIME  120000  // Min time lights stay on
 #define LORA_WEATHER_TIME   900000  // Min time to send LoRa weather data
 #define LORA_CAR_TIME       5000    // Min time to send LoRa "Car arrived/went away" data 
 
 #define CYCLE_MIN_TIME      2000    // Minimum delay between each loop cycle
 
 // Pins
-#define LED_PIN       25    // Built in LED pin
 #define OLED_PIN      16
-#define LIGHT_PIN     25    // Same as led pin because it helps trigging correctly the relays 
+#define LIGHT_PIN     25    // Same as led pin because it helps trigging correctly the relay switch 
+#define PHOTORES_PIN  33
 #define PIR_PIN       23    // PIR input pin (for IR sensor)
 #define TRIGGER_PIN   12
 #define ECHO_PIN      13
@@ -67,7 +68,8 @@
   long previousMillis_pir = 0;
   long previousMillis_dht22 = 0;
   long previousMillis_lightoff = 0;
-  long previousMillis_lighton = 0;
+  long previousMillis_lightoncar0 = 0;
+  long previousMillis_lightoncar1 = 0;
   long previousMillis_oled = 0;
   long previousMillis_loraweather = 0;
   long last_valid_dht22Millis = 0;
@@ -75,6 +77,7 @@
   double distance = 0;  
   double temp_deg = 0;
   double humid_perc = 0; 
+  int photores_val = 0;                 // photoresistor light reading
   bool PIR_state = false;               // we start, assuming no motion detected
   bool light_state = false;
   bool light_prev = false;
@@ -108,7 +111,7 @@ void setup() {
     Serial.println("-- GARAGE LoRa Module --");
     Serial.println("");
     // Initializing pins
-    pinMode(LED_PIN, OUTPUT);
+//    pinMode(LED_PIN, OUTPUT);
     digitalWrite(LIGHT_PIN, HIGH);
     pinMode(LIGHT_PIN, OUTPUT);
     pinMode(PIR_PIN, INPUT);
@@ -142,6 +145,7 @@ void setup() {
 void loop(){
 
   currentMillis = millis(); //elapsed time since reboot in milliseconds. used to avoid delays
+  photores_val = analogRead(PHOTORES_PIN);
 
   // PIR polling
   if(currentMillis - previousMillis_pir > PIR_TIME) {
@@ -164,27 +168,54 @@ void loop(){
     }
   }
 
-  // Time to switch light OFF?
-  if(currentMillis - previousMillis_lighton > LIGHT_ON_TIME) {
-    previousMillis_lighton = currentMillis;
+  // Time to switch light OFF with car GONE
+  if(currentMillis - previousMillis_lightoncar0 > LIGHT_ON_CAR0_TIME) {
+    previousMillis_lightoncar0 = currentMillis;
 
     if (!PIR_state)
     {
       if (!car_state) {
         light_state = false;
         if (light_state != light_prev) {
-            if (VERBOSE_OUTPUT) {
-              Serial.print("Light was ON! Now switching OFF: ");
+            //if (VERBOSE_OUTPUT) {
+              Serial.print("Light is ON, car is gone. Switching OFF: ");
               Serial.println(light_state);
-            }
-            digitalWrite(LIGHT_PIN, light_state);
+            //}
+            digitalWrite(LIGHT_PIN, !light_state);    // Relay is activated with LOW
             light_prev = light_state;
         }
       }
     }
     else
     {
-      if (VERBOSE_OUTPUT) Serial.println("PIR still active, skipping...");
+      //if (VERBOSE_OUTPUT) 
+      Serial.println("PIR still active, switch off skipped...");
+    }
+    
+  }
+
+   // Time to switch light OFF with car PRESENT
+  if(currentMillis - previousMillis_lightoncar1 > LIGHT_ON_CAR1_TIME) {
+    previousMillis_lightoncar1 = currentMillis;
+
+    if (!PIR_state)
+    {
+      if (car_state) {
+        light_state = false;
+        if (light_state != light_prev) {
+            //if (VERBOSE_OUTPUT) {
+              Serial.print("Light is ON! Max timout elapsed. Now switching OFF: ");
+              Serial.println(light_state);
+            //}
+            digitalWrite(LIGHT_PIN, !light_state);    // Relay is activated with LOW
+            light_prev = light_state;
+        }
+      }
+    }
+    else
+    {
+      //if (VERBOSE_OUTPUT) 
+      Serial.println("PIR still active, switch off skipped...");
     }
     
   }
@@ -197,11 +228,11 @@ void loop(){
     {
       light_state = true;
       if (light_state != light_prev) {
-        if (VERBOSE_OUTPUT) {
-        Serial.print("Light was OFF! Now switching ON: ");
+        //if (VERBOSE_OUTPUT) {
+        Serial.print("Light is OFF, car is here! Now switching ON: ");
         Serial.println(light_state);
-        }
-        digitalWrite(LIGHT_PIN, light_state);
+        //}
+        digitalWrite(LIGHT_PIN, false);      // Relay is activated with LOW
         light_prev = light_state;
       }
     }  
@@ -346,7 +377,9 @@ void loop(){
       if (car_lora_state != car_lora_prev) {
         Serial.print("Car appears arrived since a while... Sending LoRa packet! "); 
         Serial.println(car_state);
+                
         // PACKET SEND CAR STATE - TODO 
+        
         car_lora_prev = car_lora_state;
       }
     }
@@ -359,13 +392,16 @@ void loop(){
         if (car_lora_state != car_lora_prev) {
           Serial.print("Car appears gone away since a while... Sending LoRa packet! ");
           Serial.println(car_state);
+          
           // PACKET SEND CAR STATE - TODO 
+          
           car_lora_prev = car_lora_state;
         }
     }
   }
     
-
+Serial.println(photores_val);
+delay(500);
 
   /* 
       each x secs send weather data
