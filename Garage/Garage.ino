@@ -1,14 +1,29 @@
 /*
-  LoRa Garage Module v0.2 by Enrico Gallesio (IZ1ZCK)
+  LoRa Garage Module v0.8 by Enrico Gallesio (IZ1ZCK)
   This file is part of repository https://github.com/fablab-imperia/LoRa-tests
-  This sketch is intended to look for car/people presence in the garage, 
-  set lights on if appropriate and sending presence conditions and temperature/humidity data 
+  This sketch is intended to look for car/people presence in the garage, switch light on if appropriate 
+  and sending presence conditions and temperature/humidity/telemetry data 
   to nearby LoRa devices on 433Mhz ISM band
-  
+
+  Sketch explaination:
+  Ultrasounds distance and DHT22 sensors are always polled.
+  Weather data and telemetry are automatically sent periodically (typically once every 15-30-60 mins...) via LoRa
+  If distance measured is between a certain threshold, car is present. 
+  In this case, switch light on in the garage, and keep it active for x minutes if car remains present. 
+  Then switch light off, but if IR activity is detected, delay the switching off.
+  If distance increases above x cm, car is gone. In this case switch light off almost immediately.
+  IR activity alone is not sufficient to switch on the light (cats roaming the garage!)
+  LoRa messages contain a customized identifier that can be avoided if local address is used.
+    
   see also:
   https://github.com/Martinsos/arduino-lib-hc-sr04
   https://github.com/RobTillaart/Arduino/tree/master/libraries/DHTstable
   https://techtutorialsx.com/2017/12/02/esp32-arduino-interacting-with-a-ssd1306-oled-display/
+
+  TODO: - Put all relay switch commands in one place
+        - Set lights on if only IR activity is detected, but find a way to avoid cats!
+        - See all "TODO" tags within the code below
+  
 */
 
 #include <SPI.h>
@@ -18,23 +33,26 @@
 #include <HCSR04.h>
 #include <dht.h>
 
+
 // Configuration
-#define VERBOSE_OUTPUT      0       // DEBUG mode 0: only errors - mode 1: errors + car&lights log - mode 2: verbose
+#define VERBOSE_OUTPUT      0       // TODO TOTIDY - DEBUG mode 0: only errors - mode 1: errors + car&lights log - mode 2: verbose
 #define OLED_WARM_UP        2000    // OLED warm-up time in Setup
 #define SENSORS_WARM_UP     2000    // Additional Sensors warm-up time in Setup
 #define OLED_INIT_SYNC      50      // OLED initialization syncing time in Setup. DO NOT CHANGE
 
 #define ULTRASOUNDS_TIME    500     // Min time to poll ultrasounds
-#define PIR_PHOTOR_TIME            500     // Min time to poll Infrared PIR sensor
+#define PIR_PHOTOR_TIME     500     // Min time to poll Infrared PIR sensor
 #define DHT22_TIME          5000    // Min time to poll temperature and humidity DHT22 sensor
 #define OLED_TIME           1000    // Min time to update OLED display
-#define LIGHT_OFF_TIME      1000    // Min time lights stay off
-#define LIGHT_ON_CAR0_TIME  10000   // Min time lights stay on
-#define LIGHT_ON_CAR1_TIME  120000  // Min time lights stay on
+#define LIGHT_OFF_TIME      1000    // Min time lights stay off TODO - erratic switching off delay
+#define LIGHT_ON_CAR0_TIME  10000   // Min time lights stay on with car present
+#define LIGHT_ON_CAR1_TIME  120000  // Min time lights stay on with car away
 #define LORA_WEATHER_TIME   900000  // Min time to send LoRa weather data
-#define LORA_CAR_TIME       5000    // Min time to send LoRa "Car arrived/went away" data 
+#define LORA_CAR_TIME       5000    // Min time to consider car present/away and send LoRa "Car arrived/went away" msg 
 
-#define CYCLE_MIN_TIME      2000    // Minimum delay between each loop cycle
+#define MIN_PHOTORES        2000    // Min or below photores value to consider night/dark condition
+#define MAX_PHOTORES        2500    // Max or above photores value to consider daylight condition
+
 
 // Pins
 #define OLED_PIN      16
@@ -52,16 +70,20 @@
 #define RST           14    // GPIO14 -- LoRa SX127x's RESET
 #define DI00          26    // GPIO26 -- LoRa SX127x's IRQ(Interrupt Request)
 
+
 // LoRa
 #define BAND          43305E4  //you can set band here directly,e.g. 868E6,915E6
-#define PABOOST true
+#define SYNC_WORD     0xAA
+#define PABOOST       true
+
 
 // Modules
   SSD1306 display(0x3c, 4, 15);
   dht DHT;
   UltraSonicDistanceSensor distanceSensor(13, 21);
 
-// Global vars
+
+// Global vars                          // TODO look for unused vars
   unsigned long currentMillis = 0;
   unsigned int counter = 0;             // progressive number on OLED
   long previousMillis_ultrasounds = 0;  // vars to compute elapsed time
@@ -78,6 +100,7 @@
   double temp_deg = 0;
   double humid_perc = 0; 
   int photores_val = 0;                 // photoresistor light reading
+  String custom_id = "GA1";             // set a define? TODO
   bool PIR_state = false;               // we start, assuming no motion detected
   bool light_state = false;
   bool light_prev = false;
@@ -100,6 +123,7 @@
         uint32_t unknown;
     } stat = { 0,0,0,0,0,0,0,0};
 
+
 //Functions
 
 bool inRange(int val, int minimum, int maximum)
@@ -107,18 +131,32 @@ bool inRange(int val, int minimum, int maximum)
   return ((minimum <= val) && (val <= maximum));
 }
 
+
+void sendMessage(String outgoing)
+{
+  LoRa.beginPacket();                   // start packet
+  LoRa.print(custom_id);                // add customized sender identifier
+  LoRa.print(outgoing);                 // add payload
+  LoRa.endPacket();                     // finish packet and send it
+  Serial.print("LoRa Packet Sent: ");
+  Serial.println(custom_id + outgoing);
+}
+
+
 void setup() {
 
     Serial.begin(9600);
     Serial.println("-- GARAGE LoRa Module --");
     Serial.println("");
+    
+    
     // Initializing pins
-//    pinMode(LED_PIN, OUTPUT);
     digitalWrite(LIGHT_PIN, HIGH);
     pinMode(LIGHT_PIN, OUTPUT);
     pinMode(PIR_PIN, INPUT);
-    //pinMode(PHOTORES_PIN, INPUT_PULLUP);
-
+    // pinMode(LED_PIN, OUTPUT);
+    
+    
     // Initializing OLED - Sometimes OLED does not wakeup at startup - TODO
     pinMode(OLED_PIN,OUTPUT);
     digitalWrite(OLED_PIN, LOW);    // set GPIO16 low to reset OLED
@@ -127,33 +165,35 @@ void setup() {
     display.init();
     display.flipScreenVertically();  
     display.setFont(ArialMT_Plain_10);
-    //logo();
+    //logo(); TODO?
     delay(OLED_WARM_UP);
     display.clear();
+    display.drawString(0, 0, "Setup ongoing");
+    display.display();
+    
 
     // Initializing LoRa
     SPI.begin(SCK,MISO,MOSI,SS);
     LoRa.setPins(SS,RST,DI00);
     if (!LoRa.begin(BAND,PABOOST))
     {
-      display.drawString(0, 0, "Starting LoRa failed!");
-      Serial.println("Starting LoRa failed!");
+      display.drawString(0, 10, "Starting LoRa failed!");
+      Serial.println("Starting LoRa failed! Crashing here");
       display.display();
       while (1);
     }
+    LoRa.setSyncWord(SYNC_WORD);           // ranges from 0-0xFF, default 0x34, see API docs
 
     delay(SENSORS_WARM_UP);
+    
 }
 
 void loop(){
 
-  currentMillis = millis(); //elapsed time since reboot in milliseconds. used to avoid delays
- 
+  currentMillis = millis();         // current elapsed time since reboot in milliseconds. used to avoid delays
 
-  delay(500);
-
-  if (!night_mode) {
-    if (photores_val < 2000)
+  if (!night_mode) {                // are we in dark or light conditions?
+    if (photores_val < MIN_PHOTORES)
       {
         night_mode = true;
         Serial.println("NIGHT MODE ON!");
@@ -161,12 +201,13 @@ void loop(){
   }
   else
   {
-    if (photores_val > 2500)
+    if (photores_val > MAX_PHOTORES)
       {
         night_mode = false;
         Serial.println("NIGHT MODE OFF!");
       }
   }
+
 
   // PIR & PHOTORESISTOR polling
   if(currentMillis - previousMillis_pir > PIR_PHOTOR_TIME) {
@@ -181,7 +222,8 @@ void loop(){
     }
   }
 
-  // Ultrasounds polling
+
+  // ULTRASOUNDS distance polling
   if(currentMillis - previousMillis_ultrasounds > ULTRASOUNDS_TIME) {
     previousMillis_ultrasounds = currentMillis;
     distance = distanceSensor.measureDistanceCm();
@@ -192,7 +234,8 @@ void loop(){
     }
   }
 
-  // Time to switch light OFF with car GONE
+
+  // Time to SWITCH LIGHT OFF with car GONE?
   if(currentMillis - previousMillis_lightoncar0 > LIGHT_ON_CAR0_TIME) {
     previousMillis_lightoncar0 = currentMillis;
 
@@ -224,7 +267,8 @@ void loop(){
     
   }
 
-   // Time to switch light OFF with car PRESENT
+
+   // Time to SWITCH LIGHT OFF with car PRESENT?
   if(currentMillis - previousMillis_lightoncar1 > LIGHT_ON_CAR1_TIME) {
     previousMillis_lightoncar1 = currentMillis;
 
@@ -257,7 +301,8 @@ void loop(){
     
   }
 
-  // Time to switch light ON?
+
+  // Time to SWITCH LIGHT ON?
   if(currentMillis - previousMillis_lightoff > LIGHT_OFF_TIME) {
     previousMillis_lightoff = currentMillis;
 
@@ -350,8 +395,9 @@ void loop(){
       Serial.println(" secs ago.");
     }
   }
+
   
-  // Print to OLED
+  // Print sensors condition to OLED
   if(currentMillis - previousMillis_oled > OLED_TIME) {
     previousMillis_oled = currentMillis;
     display.clear();
@@ -369,8 +415,7 @@ void loop(){
   }
 
 
-// Look for the car
-
+    // Look for the car
     if (inRange(distance, 5, 100))
     {
       car_state = true;
@@ -393,7 +438,7 @@ void loop(){
     }
   
   
-  // Time to send weather via LoRa?
+  // Time to send WEATHER via LoRa?
   if (currentMillis - previousMillis_loraweather > LORA_WEATHER_TIME) {
     previousMillis_loraweather = currentMillis;
     Serial.println("Time to send LoRa Weather!");
@@ -408,7 +453,9 @@ void loop(){
       Serial.print((currentMillis - last_valid_dht22Millis)/1000);
       Serial.println(" secs ago.");
     }
-    // PACKET SEND WEATHER - TODO
+    // PACKET SEND WEATHER + telemetry
+      String message = ";T" + String(temp_deg) + ";H" + String(humid_perc) + ";V" + String((currentMillis - last_valid_dht22Millis)/1000) + ";C" + String(car_state) + ";D" + String(distance) + ";N" + String(night_mode) + ";L" + String(photores_val);
+      sendMessage(message);
   }
  
   
@@ -423,7 +470,9 @@ void loop(){
         Serial.println(car_state);
                 
         // PACKET SEND CAR STATE - TODO 
-        
+          String message = ";C1";
+          sendMessage(message);
+          
         car_lora_prev = car_lora_state;
       }
     }
@@ -437,25 +486,14 @@ void loop(){
           Serial.print("Car appears gone away since a while... Sending LoRa packet! ");
           Serial.println(car_state);
           
-          // PACKET SEND CAR STATE - TODO 
+          // PACKET SEND CAR STATE
+          String message = ";C0";
+          sendMessage(message);
           
           car_lora_prev = car_lora_state;
         }
     }
   }
 
-
-
-
-  /* 
-      each x secs send weather data
-      //if last_carpresent > x send notification
-      
-      
-      send: temp_deg, humid_perc,
-      ((currentMillis - last_valid_dht22Millis)/1000) //last valid dht22 reading
-      //if lastvaliddht22 reading > x secs then send warning
-      //if last_carpresent > x send notification
-  */
-}
+} // end of loop
   
