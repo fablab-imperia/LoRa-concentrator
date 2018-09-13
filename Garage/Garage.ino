@@ -10,8 +10,9 @@
   Weather data and telemetry are automatically sent periodically (typically once every 15-30-60 mins...) via LoRa
   If distance measured is between a certain threshold, car is present. 
   In this case, switch light on in the garage, and keep it active for x minutes if car remains present. 
+  If car is confirmed for some time LoRa notification is sent.
   Then switch light off, but if IR activity is detected, delay the switching off.
-  If distance increases above x cm, car is gone. In this case switch light off almost immediately.
+  If distance increases above x cm, car is gone. In this case switch light off almost immediately, then send LoRa msg.
   IR activity alone is not sufficient to switch on the light (cats roaming the garage!)
   LoRa messages contain a customized identifier that can be avoided if local address is used.
     
