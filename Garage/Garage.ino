@@ -14,7 +14,8 @@
   Then switch light off, but if IR activity is detected, delay the switching off.
   If distance increases above x cm, car is gone. In this case switch light off almost immediately, then send LoRa msg.
   IR activity alone is not sufficient to switch on the light (cats roaming the garage!)
-  LoRa messages contain a customized identifier that can be avoided if local address is used.
+  LoRa messages contain a customized identifier that can be avoided if local address is used. 
+  Each message is sent twice to avoid in freq. collision, but should be fixed with ACK receipt.
     
   see also:
   https://github.com/Martinsos/arduino-lib-hc-sr04
@@ -24,6 +25,7 @@
   TODO: - Put all relay switch commands in one place
         - Set lights on if only IR activity is detected, but find a way to avoid cats!
         - See all "TODO" tags within the code below
+        - Set lights on remotely
   
 */
 
@@ -45,11 +47,13 @@
 #define PIR_PHOTOR_TIME     500     // Min time to poll Infrared PIR sensor
 #define DHT22_TIME          5000    // Min time to poll temperature and humidity DHT22 sensor
 #define OLED_TIME           1000    // Min time to update OLED display
+#define LED_FLASH           1000     // Duration of status led flash
 #define LIGHT_OFF_TIME      1000    // Min time lights stay off TODO - erratic switching off delay
 #define LIGHT_ON_CAR0_TIME  10000   // Min time lights stay on with car present
 #define LIGHT_ON_CAR1_TIME  120000  // Min time lights stay on with car away
 #define LORA_WEATHER_TIME   900000  // Min time to send LoRa weather data
-#define LORA_CAR_TIME       5000    // Min time to consider car present/away and send LoRa "Car arrived/went away" msg 
+#define LORA_CAR_TIME       5000    // Min time to consider car present/away and send LoRa "Car arrived/went away" msg
+#define LORA_REPEAT         2000    // Interval between 2 messages sent
 
 #define MIN_PHOTORES        2000    // Min or below photores value to consider night/dark condition
 #define MAX_PHOTORES        2500    // Max or above photores value to consider daylight condition
@@ -63,6 +67,8 @@
 #define TRIGGER_PIN   21
 #define ECHO_PIN      13
 #define DHT22_PIN     17
+#define LED_PIN       33    // not builtin led
+
 
 #define SCK           5     // GPIO5  -- LoRa SX127x's SCK   // LoRa module integrated in Heltec ESP32 board
 #define MISO          19    // GPIO19 -- LoRa SX127x's MISO  // Do not change any of the following pins
@@ -132,14 +138,28 @@ bool inRange(int val, int minimum, int maximum)
   return ((minimum <= val) && (val <= maximum));
 }
 
+void ledFlash()
+{
+  digitalWrite(LED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+  delay(LED_FLASH);                       // wait for a second
+  digitalWrite(LED_PIN, LOW);    // turn the LED off by making the voltage LOW
+}
 
-void sendMessage(String outgoing)
+void sendMessage(String outgoing)       // Repeated twice to avoid conflicts in freq. TODO remove fix with ACK!
 {
   LoRa.beginPacket();                   // start packet
   LoRa.print(custom_id);                // add customized sender identifier
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
   Serial.print("LoRa Packet Sent: ");
+  ledFlash();
+  delay(LORA_REPEAT);
+  LoRa.beginPacket();                   // start packet
+  LoRa.print(custom_id);                // add customized sender identifier
+  LoRa.print(outgoing);                 // add payload
+  LoRa.endPacket();                     // finish packet and send it
+  Serial.print("LoRa Packet Sent (second try): ");
+  ledFlash();
   Serial.println(custom_id + outgoing);
 }
 
@@ -154,6 +174,7 @@ void setup() {
     // Initializing pins
     digitalWrite(LIGHT_PIN, HIGH);
     pinMode(LIGHT_PIN, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
     pinMode(PIR_PIN, INPUT);
     // pinMode(LED_PIN, OUTPUT);
     
@@ -328,7 +349,7 @@ void loop(){
    }
    
     
-  // DHT22 polling
+  // DHT22 polling and Status led blink
   if(currentMillis - previousMillis_dht22 > DHT22_TIME) {
     previousMillis_dht22 = currentMillis;
     
@@ -395,6 +416,8 @@ void loop(){
       Serial.print((currentMillis - last_valid_dht22Millis)/1000);
       Serial.println(" secs ago.");
     }
+    
+    ledFlash();
   }
 
   
@@ -416,7 +439,7 @@ void loop(){
   }
 
 
-    // Look for the car
+ // Look for the car
     if (inRange(distance, 5, 100))
     {
       car_state = true;
