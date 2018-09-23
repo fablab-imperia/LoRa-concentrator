@@ -141,7 +141,7 @@ bool inRange(int val, int minimum, int maximum)
 void ledFlash()
 {
   digitalWrite(LED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(LED_FLASH);                       // wait for a second
+  //delay(LED_FLASH);                       // wait for a second
   digitalWrite(LED_PIN, LOW);    // turn the LED off by making the voltage LOW
 }
 
@@ -152,6 +152,7 @@ void sendMessage(String outgoing)       // Repeated twice to avoid conflicts in 
   LoRa.print(outgoing);                 // add payload
   LoRa.endPacket();                     // finish packet and send it
   Serial.print("LoRa Packet Sent: ");
+  Serial.println(custom_id + outgoing);
   ledFlash();
   delay(LORA_REPEAT);
   LoRa.beginPacket();                   // start packet
