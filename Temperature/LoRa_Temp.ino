@@ -21,7 +21,7 @@
 #include "LowPower.h"  //removing power Led and voltage regulator, putting LoRa to sleep + powerdown allows 7,5 uA power consumption
 
 #define ONE_WIRE_BUS 8
-#define SLEEP_TIME_MINUTES 15   // low power mode duration between each tx
+#define SLEEP_TIME_MINUTES 5   // low power mode duration between each tx
 
 OneWire oneWire(ONE_WIRE_BUS); 
 DallasTemperature sensors(&oneWire);
@@ -31,6 +31,7 @@ float temp_value;             // variables to handle temperature
 String datastring="";
 char temp_probe[10];
 uint8_t dataoutgoing[10];
+String custom_id = "OU1"; 
  
 void setup() 
 {
@@ -57,14 +58,13 @@ void setup()
   sensors.begin(); 
 }
 
-void lora_tx()
+void lora_tx(String outgoing)
 {
   LoRa.beginPacket();
-  LoRa.print(temp_probe);
-  LoRa.print(";");
-  LoRa.print(Vcc_probe());
+  LoRa.print(custom_id);
+  LoRa.print(outgoing);
   LoRa.endPacket();
-  Serial.println("Waiting for packet to complete..."); 
+  Serial.println("Waiting for packet " + outgoing + " to complete..."); 
   delay(200); // is this necessary? TODO
 }
 
@@ -102,8 +102,8 @@ void loop()
   datastring +=dtostrf(temp_value, 4, 2, temp_probe);  // ??????
   strcpy((char *)dataoutgoing,temp_probe);
   Serial.println("Sending to LoRa");
-
-  lora_tx();        // Send packet - Add ACK TODO
+  String message = ";T" + String(temp_probe) + ";V" + String(Vcc_probe());
+  lora_tx(message);        // Send packet - Add ACK TODO
   
   Serial.println("------"); 
   Serial.println("Enter sleep mode");
