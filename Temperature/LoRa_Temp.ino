@@ -1,5 +1,5 @@
 // LoRa Temperature Sensor v0.8 by Enrico Gallesio (IZ1ZCK)
-// This file is part of repository https://github.com/fablab-imperia/LoRa-tests
+// This file is part of repository https://github.com/fablab-imperia/LoRa-concentrator
 // This sketch is intended to send temperature data to nearby LoRa devices on 433Mhz ISM band
 // Pin sets are optimized for "The Cheapest possible node" by Martijn Quaedvlieg
 // https://www.thethingsnetwork.org/labs/story/build-the-cheapest-possible-node-yourself
