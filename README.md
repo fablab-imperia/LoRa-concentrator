@@ -1,4 +1,4 @@
-# LoRa-tests
+# LoRa-concentrator
 
 The target of this repository files is to send different kinds of payloads from simple LoRa nodes to a Raspberry Pi LoRa concentrator (or gateway) to be converted to MQTT and elaborated via Node-Red or sent to LoRaWAN.
 
