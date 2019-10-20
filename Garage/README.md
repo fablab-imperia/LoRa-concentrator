@@ -1,5 +1,5 @@
   LoRa Garage Module by Enrico Gallesio (IZ1ZCK)
-  This file is part of repository https://github.com/fablab-imperia/LoRa-tests
+  This file is part of repository https://github.com/fablab-imperia/LoRa-concentrator
   
   This sketch is intended to look for car/people presence in the garage, 
   set lights on if appropriate and sending presence conditions and temperature/humidity data 
