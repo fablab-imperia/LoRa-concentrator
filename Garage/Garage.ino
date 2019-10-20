@@ -1,6 +1,6 @@
 /*
   LoRa Garage Module v0.9 by Enrico Gallesio (IZ1ZCK)
-  This file is part of repository https://github.com/fablab-imperia/LoRa-tests
+  This file is part of repository https://github.com/fablab-imperia/LoRa-concentrator
   This sketch is intended to look for car/people presence in the garage, switch light on if appropriate 
   and sending presence conditions and temperature/humidity/telemetry data 
   to nearby LoRa devices on 433Mhz ISM band
