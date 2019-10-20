@@ -5,4 +5,4 @@ The concentrator is made of a Raspberry Pi Rev. 2 with SX127x module and is base
 
 Some files provided are modifications forked from of original pyLoRA library above.
 
-See full Readme for Fablab Imperia LoRa-tests at https://github.com/fablab-imperia/LoRa-tests
+See full Readme for Fablab Imperia LoRa-tests at https://github.com/fablab-imperia/LoRa-concentrator
